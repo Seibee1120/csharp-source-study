@@ -23,19 +23,19 @@ namespace System.Collections.Generic
         private const string KeyValuePairsName = "KeyValuePairs"; // Do not rename (binary serialization)
         private const string ComparerName = "Comparer"; // Do not rename (binary serialization)
 
-        private int[]? _buckets;
-        private Entry[]? _entries;
+        private int[]? _buckets; // 桶数组，1-based 索引
+        private Entry[]? _entries; // 数据数组，0-based 索引
 #if TARGET_64BIT
         private ulong _fastModMultiplier;
 #endif
-        private int _count;
-        private int _freeList;
-        private int _freeCount;
+        private int _count; // 记录 entries 中，已经使用过的元素数量（包含有效元素 + 废弃空位）
+        private int _freeList; // 记录 entries 中，废弃空位链表头部的索引。初始值是 -1，代表没有废弃空位。
+        private int _freeCount; // 记录 entries 中，废弃空位的数量
         private int _version;
         private IEqualityComparer<TKey>? _comparer;
         private KeyCollection? _keys;
         private ValueCollection? _values;
-        private const int StartOfFreeList = -3;
+        private const int StartOfFreeList = -3; // entries[i].next = StartOfFreeList - _freeList
 
         public Dictionary() : this(0, null) { }
 
