@@ -1,0 +1,6 @@
+# JetBrains Rider / IntelliJ IDEA
+.idea/
+
+# .NET build output
+bin/
+obj/
