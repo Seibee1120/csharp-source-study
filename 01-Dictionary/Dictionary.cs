@@ -50,6 +50,7 @@ namespace System.Collections.Generic
                 ThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.capacity);
             }
 
+            // 字典在创建的时候如果没有声明容量，那么初始化会延后到第一次添加元素的时候
             if (capacity > 0)
             {
                 Initialize(capacity);
@@ -206,6 +207,7 @@ namespace System.Collections.Generic
             }
         }
 
+        // 字典中的有效数据数量
         public int Count => _count - _freeCount;
 
         /// <summary>
@@ -346,12 +348,12 @@ namespace System.Collections.Generic
                 ThrowHelper.ThrowArgumentNullException(ExceptionArgument.array);
             }
 
-            if ((uint)index > (uint)array.Length)
+            if ((uint)index > (uint)array.Length) // 数组越界
             {
                 ThrowHelper.ThrowArgumentOutOfRange_IndexMustBeLessOrEqualException();
             }
 
-            if (array.Length - index < Count)
+            if (array.Length - index < Count) // 数组指定的克隆空间不够
             {
                 ThrowHelper.ThrowArgumentException(ExceptionResource.Arg_ArrayPlusOffTooSmall);
             }
@@ -362,6 +364,7 @@ namespace System.Collections.Generic
             {
                 if (entries![i].next >= -1)
                 {
+                    // index 先用后加
                     array[index++] = new KeyValuePair<TKey, TValue>(entries[i].key, entries[i].value);
                 }
             }
@@ -488,7 +491,7 @@ namespace System.Collections.Generic
 
         private int Initialize(int capacity)
         {
-            int size = HashHelpers.GetPrime(capacity);
+            int size = HashHelpers.GetPrime(capacity); // 把指定的容量转换成大于等于容量的最小素数
             int[] buckets = new int[size];
             Entry[] entries = new Entry[size];
 
@@ -515,7 +518,7 @@ namespace System.Collections.Generic
 
             if (_buckets == null)
             {
-                Initialize(0);
+                Initialize(0); // 没有初始化过，就按最小容量初始化，大于等于 0 的最小素数是 3
             }
             Debug.Assert(_buckets != null);
 
@@ -530,6 +533,7 @@ namespace System.Collections.Generic
             ref int bucket = ref GetBucket(hashCode);
             int i = bucket - 1; // Value in _buckets is 1-based
 
+            // 先查有没有存过
             if (typeof(TKey).IsValueType && // comparer can only be null for value types; enable JIT to eliminate entire if block for ref types
                 comparer == null)
             {
@@ -596,33 +600,34 @@ namespace System.Collections.Generic
                 }
             }
 
+            // 没存过，就看有没有空位
             int index;
-            if (_freeCount > 0)
+            if (_freeCount > 0) // 有空位，直接用空位链表的头部，然后把 _freeList 指向下一个空位，更新 _freeCount
             {
                 index = _freeList;
                 Debug.Assert((StartOfFreeList - entries[_freeList].next) >= -1, "shouldn't overflow because `next` cannot underflow");
                 _freeList = StartOfFreeList - entries[_freeList].next;
                 _freeCount--;
             }
-            else
+            else // 没有空位，判断是否满了需要扩容
             {
                 int count = _count;
                 if (count == entries.Length)
                 {
                     Resize();
-                    bucket = ref GetBucket(hashCode);
+                    bucket = ref GetBucket(hashCode); // 扩容后，哈希值不变，但是桶长度改变，重新算落在哪个桶
                 }
-                index = count;
+                index = count; // 没空位，无论扩不扩容都是在 entries 尾部追加新元素
                 _count = count + 1;
                 entries = _entries;
             }
 
             ref Entry entry = ref entries![index];
             entry.hashCode = hashCode;
-            entry.next = bucket - 1; // Value in _buckets is 1-based
+            entry.next = bucket - 1; // Value in _buckets is 1-based. 这步是在把当前元素挂载到新桶旧元素的头部（如果有的话，没有就是 next = -1）
             entry.key = key;
             entry.value = value;
-            bucket = index + 1; // Value in _buckets is 1-based
+            bucket = index + 1; // Value in _buckets is 1-based. 这步是把新桶指向当前元素
             _version++;
 
             // Value types never rehash
@@ -1253,10 +1258,10 @@ namespace System.Collections.Generic
             Debug.Assert(HashHelpers.IsPrime(newSize));
             Debug.Assert(newSize >= _entries.Length);
 
-            Entry[] entries = new Entry[newSize];
+            Entry[] entries = new Entry[newSize]; // new 一个新的数据数组
 
             int count = _count;
-            Array.Copy(_entries, entries, count);
+            Array.Copy(_entries, entries, count); // 先什么都不管，把旧 entries 里面的有效数据和空位都搬过来
 
             if (!typeof(TKey).IsValueType && forceNewHashCodes)
             {
@@ -1273,21 +1278,23 @@ namespace System.Collections.Generic
             }
 
             // Assign member variables after both arrays allocated to guard against corruption from OOM if second fails
-            _buckets = new int[newSize];
+            _buckets = new int[newSize]; // new 一个新的桶数组，此时已经把旧的桶数组丢弃了
 #if TARGET_64BIT
             _fastModMultiplier = HashHelpers.GetFastModMultiplier((uint)newSize);
 #endif
+            // 遍历搬过去的每一个元素（有效元素 + 废弃空位）
             for (int i = 0; i < count; i++)
             {
-                if (entries[i].next >= -1)
+                if (entries[i].next >= -1) // 跳过空位
                 {
+                    // 循环把每一个有效元素，算出应该在哪个桶，然后把新元素挂载到桶里已有链表的头部，然后把桶指向新元素
                     ref int bucket = ref GetBucket(entries[i].hashCode);
                     entries[i].next = bucket - 1; // Value in _buckets is 1-based
                     bucket = i + 1;
-                }
+                } // 完成操作：所有有效元素根据新的数组长度重新计算哈希值，定位新的桶位置，有哈希冲突的重新组成链表
             }
 
-            _entries = entries;
+            _entries = entries; // 梳理好的新数据数组替换掉旧数组
         }
 
         public bool Remove(TKey key)
@@ -1309,33 +1316,33 @@ namespace System.Collections.Generic
 
                 IEqualityComparer<TKey>? comparer = _comparer;
                 Debug.Assert(typeof(TKey).IsValueType || comparer is not null);
-                uint hashCode = (uint)(typeof(TKey).IsValueType && comparer == null ? key.GetHashCode() : comparer!.GetHashCode(key));
+                uint hashCode = (uint)(typeof(TKey).IsValueType && comparer == null ? key.GetHashCode() : comparer!.GetHashCode(key)); // 需要删掉的 key 转换为哈希值
 
-                ref int bucket = ref GetBucket(hashCode);
+                ref int bucket = ref GetBucket(hashCode); // 哈希值再取模数组长度定位到桶，取出该桶中盛放的链头（1-based）
                 Entry[]? entries = _entries;
                 int last = -1;
-                int i = bucket - 1; // Value in buckets is 1-based
+                int i = bucket - 1; // Value in buckets is 1-based. 链头转换为 0-based 索引
 
                 if (typeof(TKey).IsValueType && // comparer can only be null for value types; enable JIT to eliminate entire if block for ref types
                     comparer == null)
                 {
-                    while ((uint)i < (uint)entries.Length)
+                    while ((uint)i < (uint)entries.Length) // 防止按链表查询时越界
                     {
                         ref Entry entry = ref entries[i];
 
-                        if (entry.hashCode == hashCode && EqualityComparer<TKey>.Default.Equals(entry.key, key))
+                        if (entry.hashCode == hashCode && EqualityComparer<TKey>.Default.Equals(entry.key, key)) // 匹配到对象
                         {
-                            if (last < 0)
+                            if (last < 0) // 该对象就是链头
                             {
-                                bucket = entry.next + 1; // Value in buckets is 1-based
+                                bucket = entry.next + 1; // Value in buckets is 1-based. 把桶指向链表下一位
                             }
-                            else
+                            else // 该对象不是链头，前面还有其他元素
                             {
-                                entries[last].next = entry.next;
+                                entries[last].next = entry.next; // 把上一位的元素指向下一位，跳过当前需要删除的元素
                             }
 
                             Debug.Assert((StartOfFreeList - _freeList) < 0, "shouldn't underflow because max hashtable length is MaxPrimeArrayLength = 0x7FEFFFFD(2146435069) _freelist underflow threshold 2147483646");
-                            entry.next = StartOfFreeList - _freeList;
+                            entry.next = StartOfFreeList - _freeList; // 把当前位标记为废弃空位，并且 next 已经记录了下一位废弃空位的索引
 
                             if (RuntimeHelpers.IsReferenceOrContainsReferences<TKey>())
                             {
@@ -1347,15 +1354,17 @@ namespace System.Collections.Generic
                                 entry.value = default!;
                             }
 
-                            _freeList = i;
+                            _freeList = i; // 记录废弃空位链表的头部元素的索引
                             _freeCount++;
                             return true;
                         }
 
-                        last = i;
-                        i = entry.next;
+                        // 没匹配到对象继续往下走
+                        
+                        last = i; // 记录当前元素的索引，用于下一轮循环中，作为上一位索引被使用
+                        i = entry.next; // 准备往链表的下一位走
 
-                        collisionCount++;
+                        collisionCount++; // 已经检查过的数量
                         if (collisionCount > (uint)entries.Length)
                         {
                             // The chain of entries forms a loop; which means a concurrent update has happened.
@@ -1364,7 +1373,7 @@ namespace System.Collections.Generic
                         }
                     }
                 }
-                else
+                else // 引用类型的逻辑与值类型基本一致
                 {
                     Debug.Assert(comparer is not null);
                     while ((uint)i < (uint)entries.Length)
@@ -1728,18 +1737,18 @@ namespace System.Collections.Generic
             Debug.Assert(_entries is not null);
 
             Entry[] newEntries = _entries;
-            int newCount = 0;
+            int newCount = 0; // 因为遍历旧数组时存在废弃空位，所以需要一个变量记录新数组长度
             for (int i = 0; i < count; i++)
             {
                 uint hashCode = entries[i].hashCode;
-                if (entries[i].next >= -1)
+                if (entries[i].next >= -1) // 跳过废弃空位
                 {
                     ref Entry entry = ref newEntries[newCount];
-                    entry = entries[i];
-                    ref int bucket = ref GetBucket(hashCode);
-                    entry.next = bucket - 1; // Value in _buckets is 1-based
-                    bucket = newCount + 1;
-                    newCount++;
+                    entry = entries[i]; // 旧数据填入新数据数组
+                    ref int bucket = ref GetBucket(hashCode); // 根据新数组长度，重新定位桶
+                    entry.next = bucket - 1; // Value in _buckets is 1-based. 新元素挂载到链表头部
+                    bucket = newCount + 1; // 桶指向新元素
+                    newCount++; // 新数组计数
                 }
             }
 
